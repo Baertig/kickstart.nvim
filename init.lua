@@ -83,6 +83,10 @@ vim.keymap.set('n', '<leader>q', vim.diagnostic.setloclist, { desc = 'Open diagn
 vim.keymap.set('n', '[[', ':cp<CR>', { desc = 'jump to prevous entry of Quickfix list' })
 vim.keymap.set('n', ']]', ':cn<CR>', { desc = 'jump to next entry of Quickfix list' })
 
+-- select suggestions also with arrow keys
+vim.keymap.set('c', '<up>', '<c-p>', { noremap = true })
+vim.keymap.set('c', '<down>', '<c-n>', { noremap = true })
+
 -- Exit terminal mode in the builtin terminal with a shortcut that is a bit easier
 -- for people to discover. Otherwise, you normally need to press <C-\><C-n>, which
 -- is not what someone will guess without a bit more experience.
