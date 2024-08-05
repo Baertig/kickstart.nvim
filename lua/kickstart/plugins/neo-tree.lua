@@ -24,6 +24,8 @@ return {
           ['<c-b>'] = 'close_window',
           ['<c-v>'] = 'open_vsplit',
           ['<c-h>'] = 'open_split',
+          ['[c'] = 'prev_git_modified',
+          [']c'] = 'next_git_modified',
         },
       },
       filesystem = {
