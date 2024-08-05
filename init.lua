@@ -774,8 +774,9 @@ require('lazy').setup({
   { -- Highlight, edit, and navigate code
     'nvim-treesitter/nvim-treesitter',
     build = ':TSUpdate',
+    dependencies = { 'nvim-treesitter/nvim-treesitter-textobjects' },
     opts = {
-      ensure_installed = { 'bash', 'c', 'diff', 'html', 'lua', 'luadoc', 'markdown', 'markdown_inline', 'query', 'vim', 'vimdoc' },
+      ensure_installed = { 'bash', 'c', 'diff', 'html', 'lua', 'luadoc', 'markdown', 'markdown_inline', 'query', 'vim', 'vimdoc', 'javascript', 'python' },
       -- Autoinstall languages that are not installed
       auto_install = true,
       highlight = {
@@ -786,6 +787,18 @@ require('lazy').setup({
         additional_vim_regex_highlighting = { 'ruby' },
       },
       indent = { enable = true, disable = { 'ruby' } },
+      textobjects = {
+        select = {
+          enable = true,
+          lookahead = true,
+          keymaps = {
+            ['af'] = { query = '@function.outer', desc = 'Select around function' },
+            ['if'] = { query = '@function.inner', desc = 'Select inner part of function' },
+            ['ac'] = { query = '@class.outer', desc = 'Select around class' },
+            ['ic'] = { query = '@class.inner', desc = 'Select inner part of a class' },
+          },
+        },
+      },
     },
     config = function(_, opts)
       -- [[ Configure Treesitter ]] See `:help nvim-treesitter`
