@@ -16,6 +16,6 @@ return {
 
     vim.keymap.set('n', '<leader>gs', function()
       lazygit:toggle()
-    end, { nowait = true, silent = true })
+    end, { desc = '[G]it [S]tatus (lazygit)', nowait = true, silent = true })
   end,
 }
