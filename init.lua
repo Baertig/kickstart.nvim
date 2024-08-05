@@ -466,7 +466,6 @@ require('lazy').setup({
         -- pyright = {},
         rust_analyzer = {},
         elixirls = {},
-        vuels = {},
         jedi_language_server = {},
         -- ... etc. See `:help lspconfig-all` for a list of all the pre-configured LSPs
         --
@@ -474,7 +473,39 @@ require('lazy').setup({
         --    https://github.com/pmizio/typescript-tools.nvim
         --
         -- But for many setups, the LSP (`tsserver`) will work just fine
-        -- tsserver = {},
+        tsserver = {
+          init_options = {
+            plugins = {
+              {
+                name = '@vue/typescript-plugin',
+                location = require('mason-registry').get_package('vue-language-server'):get_install_path() .. '/node_modules/@vue/language-server',
+                -- location = '/home/georgbaerdumont/.local/share/nvim/mason/packages/vue-language-server/node_modules/@vue/language-server',
+                languages = { 'vue' },
+              },
+            },
+          },
+          filetypes = { 'typescript', 'javascript', 'javascriptreact', 'typescriptreact', 'vue' },
+        },
+        volar = {},
+        prettier = {
+          filetypes = {
+            'css',
+            'graphql',
+            'html',
+            'javascript',
+            'javascriptreact',
+            'json',
+            'less',
+            'markdown',
+            'scss',
+            'typescript',
+            'typescriptreact',
+            'yaml',
+            'vue',
+          },
+        },
+        cssls = {},
+        html = {},
         --
 
         lua_ls = {
@@ -552,11 +583,11 @@ require('lazy').setup({
       end,
       formatters_by_ft = {
         lua = { 'stylua' },
+        -- You can use 'stop_after_first' to run the first available formatter from the list
+        javascript = { 'prettierd', 'prettier', stop_after_first = true },
+        vue = { 'prettierd', 'prettier', stop_after_first = true },
         -- Conform can also run multiple formatters sequentially
         -- python = { "isort", "black" },
-        --
-        -- You can use 'stop_after_first' to run the first available formatter from the list
-        -- javascript = { "prettierd", "prettier", stop_after_first = true },
       },
     },
   },
