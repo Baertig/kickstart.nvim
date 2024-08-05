@@ -843,6 +843,8 @@ require('lazy').setup({
   require 'custom.plugins.substiute',
   require 'custom.plugins.treesj',
   require 'custom.plugins.zen-mode',
+  require 'custom.plugins.dashboard-nvim',
+
   -- NOTE: The import below can automatically add your own plugins, configuration, etc from `lua/custom/plugins/*.lua`
   --    This is the easiest way to modularize your config.
   --
