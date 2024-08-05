@@ -22,6 +22,8 @@ return {
           ['c'] = { 'copy', config = { show_path = 'relative' } },
           ['m'] = { 'move', config = { show_path = 'relative' } },
           ['<c-b>'] = 'close_window',
+          ['<c-v>'] = 'open_vsplit',
+          ['<c-h>'] = 'open_split',
         },
       },
       filesystem = {
