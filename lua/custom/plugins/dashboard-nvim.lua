@@ -10,16 +10,22 @@ return {
         },
         shortcut = {
           {
-            desc = 'open play',
-            group = 'Conditional',
+            desc = ' Playground',
+            group = 'Number',
             action = 'Neotree toggle float filesystem dir=~/play',
             key = 'y',
           },
           {
-            desc = 'open projects',
+            desc = '  Projects',
             group = 'Conditional',
             action = 'Neotree toggle float filesystem dir=~/projects',
             key = 'p',
+          },
+          {
+            desc = ' Files',
+            group = 'Label',
+            action = 'Telescope find_files',
+            key = 'f',
           },
           {
             desc = '󰊳 Update',
@@ -27,29 +33,19 @@ return {
             action = 'Lazy update',
             key = 'u',
           },
-          {
-            icon = ' ',
-            icon_hl = '@variable',
-            desc = 'Files',
-            group = 'Label',
-            action = 'Telescope find_files',
-            key = 'f',
-          },
-          {
-            desc = ' Apps',
-            group = 'DiagnosticHint',
-            action = 'Telescope app',
-            key = 'a',
-          },
-          {
-            desc = ' dotfiles',
-            group = 'Number',
-            action = 'Telescope dotfiles',
-            key = 'd',
-          },
+        },
+        project = {
+          enable = true,
+          limit = 15,
+          action = function(path)
+            vim.cmd('cd ' .. path)
+            vim.cmd 'Telescope find_files'
+          end,
+        },
+        mru = {
+          limit = 4,
         },
       },
-      -- config
     }
   end,
   dependencies = { { 'nvim-tree/nvim-web-devicons' } },
