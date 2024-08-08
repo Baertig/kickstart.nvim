@@ -78,7 +78,7 @@ vim.opt.scrolloff = 10
 vim.keymap.set('n', '<Esc>', '<cmd>nohlsearch<CR>')
 
 -- Diagnostic keymaps
-vim.keymap.set('n', '<leader>q', vim.diagnostic.setloclist, { desc = 'Open diagnostic [Q]uickfix list' })
+vim.keymap.set('n', '<leader>q', vim.diagnostic.setqflist, { desc = 'Open diagnostic [Q]uickfix list' })
 -- quickfix list
 vim.keymap.set('n', '[[', ':cp<CR>', { desc = 'jump to prevous entry of Quickfix list' })
 vim.keymap.set('n', ']]', ':cn<CR>', { desc = 'jump to next entry of Quickfix list' })
@@ -430,6 +430,9 @@ require('lazy').setup({
           -- Execute a code action, usually your cursor needs to be on top of an error
           -- or a suggestion from your LSP for this to activate.
           map('<leader>ca', vim.lsp.buf.code_action, '[C]ode [A]ction')
+
+          -- open the diagrnostic window in a float
+          map('<leader>cd', vim.diagnostic.open_float, '[Code] [D]iagnostic (floating window)')
 
           -- WARN: This is not Goto Definition, this is Goto Declaration.
           --  For example, in C this would take you to the header.
