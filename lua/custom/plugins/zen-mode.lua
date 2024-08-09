@@ -9,6 +9,8 @@ return {
       plugins = {
         neovide = {
           enabled = true,
+
+          disable_animations = false,
         },
       },
     }
