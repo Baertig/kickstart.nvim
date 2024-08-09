@@ -1,3 +1,6 @@
+-- NOTE: Plugins to try out next
+-- https://github.com/ThePrimeagen/harpoon/tree/harpoon2 --> quick access to often used files
+--
 --<space> as the leader key
 -- See `:help mapleader`
 --  NOTE: Must happen before plugins are loaded (otherwise wrong leader will be used)
@@ -93,6 +96,11 @@ vim.keymap.set('c', '<down>', '<c-n>', { noremap = true })
 --
 -- NOTE: -- i need <Esc> to work in lazy git.
 vim.keymap.set('t', '<c-e>', '<C-\\><C-n>', { desc = 'Exit terminal mode' })
+
+-- Delete unuses default keymappings of lsp-config
+vim.keymap.del('n', 'grn')
+vim.keymap.del('n', 'gra')
+vim.keymap.del('n', 'grr')
 
 -- [[ Basic Autocommands ]]
 --  See `:help lua-guide-autocommands`
@@ -292,11 +300,9 @@ require('lazy').setup({
       local builtin = require 'telescope.builtin'
       vim.keymap.set('n', '<leader>sh', builtin.help_tags, { desc = '[S]earch [H]elp' })
       vim.keymap.set('n', '<leader>sk', builtin.keymaps, { desc = '[S]earch [K]eymaps' })
-      -- TODO: only search in the current directory or ideally git files of the current opened file
       vim.keymap.set('n', '<c-p>', builtin.find_files, { desc = 'Search Files' })
       vim.keymap.set('n', '<leader>ss', builtin.builtin, { desc = '[S]earch [S]elect Telescope' })
       vim.keymap.set('n', '<leader>sw', builtin.grep_string, { desc = '[S]earch current [W]ord' })
-      -- TODO: same as above only search in the current directory or git files
       vim.keymap.set('n', '<c-s-f>', builtin.live_grep, { desc = '[S]earch by [G]rep' })
       vim.keymap.set('n', '<leader>sd', builtin.diagnostics, { desc = '[S]earch [D]iagnostics' })
       vim.keymap.set('n', '<leader>sr', builtin.resume, { desc = '[S]earch [R]esume' })
@@ -419,10 +425,6 @@ require('lazy').setup({
           --  Similar to document symbols, except searches over your entire project.
           map('<leader>ws', require('telescope.builtin').lsp_dynamic_workspace_symbols, '[W]orkspace [S]ymbols')
 
-          -- Delete unuses default keymappings of lsp-config
-          vim.keymap.del('n', 'grn')
-          vim.keymap.del('n', 'gra')
-          vim.keymap.del('n', 'grr')
           -- Rename the variable under your cursor.
           --  Most Language Servers support renaming across files, etc.
           map('<leader>rn', vim.lsp.buf.rename, '[R]e[n]ame')
