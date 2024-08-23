@@ -499,7 +499,7 @@ require('lazy').setup({
       --        For example, to see the options for `lua_ls`, you could go to: https://luals.github.io/wiki/settings/
       local servers = {
         -- clangd = {},
-        -- gopls = {},
+        gopls = {},
         -- pyright = {},
         rust_analyzer = {},
         elixirls = {},
@@ -524,23 +524,6 @@ require('lazy').setup({
           filetypes = { 'typescript', 'javascript', 'javascriptreact', 'typescriptreact', 'vue' },
         },
         volar = {},
-        prettier = {
-          filetypes = {
-            'css',
-            'graphql',
-            'html',
-            'javascript',
-            'javascriptreact',
-            'json',
-            'less',
-            'markdown',
-            'scss',
-            'typescript',
-            'typescriptreact',
-            'yaml',
-            'vue',
-          },
-        },
         cssls = {},
         html = {},
         --
@@ -614,7 +597,7 @@ require('lazy').setup({
         -- languages here or re-enable it for the disabled ones.
         local disable_filetypes = { c = true, cpp = true }
         return {
-          timeout_ms = 500,
+          timeout_ms = 1000,
           lsp_fallback = not disable_filetypes[vim.bo[bufnr].filetype],
         }
       end,
@@ -881,6 +864,7 @@ require('lazy').setup({
   require 'custom.plugins.treesj',
   require 'custom.plugins.zen-mode',
   require 'custom.plugins.dashboard-nvim',
+  require 'custom.plugins.nvim-ts-autotag',
 
   -- NOTE: The import below can automatically add your own plugins, configuration, etc from `lua/custom/plugins/*.lua`
   --    This is the easiest way to modularize your config.
