@@ -22,6 +22,12 @@ return {
             key = 'p',
           },
           {
+            desc = '  Work',
+            group = '@comment.todo',
+            action = 'Neotree toggle float filesystem dir=~/work',
+            key = 'w',
+          },
+          {
             desc = ' Files',
             group = 'Label',
             action = 'Telescope find_files',
