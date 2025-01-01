@@ -98,9 +98,9 @@ vim.keymap.set('c', '<down>', '<c-n>', { noremap = true })
 vim.keymap.set('t', '<c-e>', '<C-\\><C-n>', { desc = 'Exit terminal mode' })
 
 -- Delete unuses default keymappings of lsp-config
-vim.keymap.del('n', 'grn')
-vim.keymap.del('n', 'gra')
-vim.keymap.del('n', 'grr')
+-- vim.keymap.del('n', 'grn')
+-- vim.keymap.del('n', 'gra')
+-- vim.keymap.del('n', 'grr')
 
 -- [[ Basic Autocommands ]]
 --  See `:help lua-guide-autocommands`
