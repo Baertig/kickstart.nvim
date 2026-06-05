@@ -742,11 +742,9 @@ require('lazy').setup({
     version = '*', -- Use for stability; omit to use `main` branch for the latest features
     event = 'VeryLazy',
     config = function()
-      require('nvim-surround').setup { -- Configuration here, or leave empty to use defaults
-        keymaps = {
-          visual = 's',
-        },
-      }
+      vim.g.nvim_surround_no_visual_mappings = true
+      require('nvim-surround').setup()
+      vim.keymap.set('x', 's', '<Plug>(nvim-surround-visual)', { desc = 'Add a surrounding pair around a visual selection' })
     end,
   },
 
