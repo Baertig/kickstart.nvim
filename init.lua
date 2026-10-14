@@ -59,6 +59,9 @@ vim.opt.timeoutlen = 300
 vim.opt.splitright = true
 vim.opt.splitbelow = true
 
+-- Give floating windows, including LSP hover documentation, a visible outline.
+vim.opt.winborder = 'rounded'
+
 -- Sets how neovim will display certain whitespace characters in the editor.
 --  See `:help 'list'`
 --  and `:help 'listchars'`
