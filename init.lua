@@ -97,10 +97,7 @@ vim.keymap.set('c', '<down>', '<c-n>', { noremap = true })
 -- NOTE: -- i need <Esc> to work in lazy git.
 vim.keymap.set('t', '<c-e>', '<C-\\><C-n>', { desc = 'Exit terminal mode' })
 
--- Delete unuses default keymappings of lsp-config
--- vim.keymap.del('n', 'grn')
--- vim.keymap.del('n', 'gra')
--- vim.keymap.del('n', 'grr')
+-- Note: built-in gr* LSP keymaps are deleted in custom/plugins/substiute.lua
 
 -- [[ Basic Autocommands ]]
 --  See `:help lua-guide-autocommands`
