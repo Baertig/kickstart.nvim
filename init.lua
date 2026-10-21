@@ -270,6 +270,7 @@ require('lazy').setup({
         pickers = {
           find_files = {
             find_command = { 'rg', '--files', '--hidden', '--glob', '!**/.git/*' },
+            path_display = { 'filename_first', 'truncate' },
           },
           buffers = {
             mappings = {
