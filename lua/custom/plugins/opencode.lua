@@ -13,8 +13,22 @@ return {
     -- Required so buffers reload when opencode edits files on disk.
     vim.o.autoread = true
 
+    local opencode_cmd = 'opencode'
+    local terminal_opts = {
+      win = {
+        position = 'right',
+        width = 0.35,
+        enter = false,
+      },
+    }
+
     -- OpenCode V2's shared background service is discovered automatically.
     vim.g.opencode_opts = {
+      server = {
+        start = function()
+          Snacks.terminal.open(opencode_cmd, terminal_opts)
+        end,
+      },
       events = {
         -- Permission requests are handled in the OpenCode TUI.
         permissions = {
@@ -24,6 +38,24 @@ return {
     }
 
     local opencode = require 'opencode'
+
+    vim.api.nvim_create_autocmd('VimEnter', {
+      group = vim.api.nvim_create_augroup('opencode-terminal', { clear = true }),
+      once = true,
+      callback = function()
+        vim.schedule(function()
+          local current_win = vim.api.nvim_get_current_win()
+          Snacks.terminal.open(opencode_cmd, terminal_opts)
+          if vim.api.nvim_win_is_valid(current_win) then
+            vim.api.nvim_set_current_win(current_win)
+          end
+        end)
+      end,
+    })
+
+    vim.keymap.set({ 'n', 't' }, '<leader>ao', function()
+      Snacks.terminal.toggle(opencode_cmd, terminal_opts)
+    end, { desc = '[A]I toggle [O]penCode' })
 
     local prompt_ns = vim.api.nvim_create_namespace 'opencode_multiline_prompt'
 
