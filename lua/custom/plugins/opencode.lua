@@ -59,9 +59,98 @@ return {
 
     local prompt_ns = vim.api.nvim_create_namespace 'opencode_multiline_prompt'
 
+    ---Ask this workspace's OpenCode TUI to navigate to a session.
+    ---
+    ---Depends on the `nvim-nav` OpenCode plugin (see
+    ---`~/.config/opencode/plugins/nvim-nav`). Scoping to this workspace relies on
+    ---the `x-opencode-directory` header that every `server` request already
+    ---sends (Neovim's cwd); the plugin only navigates the TUI whose own location
+    ---matches. Avoid a `location[directory]` query here: `curl` treats `[`/`]` as
+    ---glob characters and would reject the URL. This is best-effort: if the
+    ---plugin isn't loaded the request simply fails and is ignored.
+    ---@param server opencode.server.Server
+    ---@param session_id string
+    local function navigate_tui(server, session_id)
+      server
+        :request('/api/rpc/nvim-nav/open', 'POST', {
+          input = { sessionID = session_id },
+        })
+        :catch(function() end)
+    end
+
+    ---Pick an existing session, or create a new one, then send the rendered prompt.
+    ---@param server opencode.server.Server
+    ---@param prompt string
+    ---@param context opencode.context.Context
+    ---@param reopen fun()
+    local function pick_session_and_prompt(server, prompt, context, reopen)
+      local Promise = require 'opencode.promise'
+      local new_session = { new = true, title = 'New session' }
+
+      server
+        :get_sessions()
+        :next(function(sessions)
+          local choices = { new_session }
+          for _, session in ipairs(sessions) do
+            if not (session.time and session.time.archived) then
+              table.insert(choices, session)
+            end
+          end
+
+          return require('opencode.promise.ui').select(choices, {
+            prompt = 'Send OpenCode prompt to:',
+            format_item = function(choice)
+              if choice.new then
+                return '＋ New session'
+              end
+
+              return choice.title or choice.id
+            end,
+          })
+        end)
+        :next(function(choice)
+          if not choice.new then
+            return Promise.resolve(choice)
+          end
+
+          return server
+            :request('/api/session', 'POST', {
+              location = { directory = vim.fn.getcwd() },
+            })
+            :next(function(response)
+              local session = response and response.data
+              if not session then
+                return Promise.reject 'OpenCode did not return the new session'
+              end
+              return Promise.resolve(session)
+            end)
+        end)
+        :next(function(session)
+          local plaintext = context:render(prompt).output:plaintext()
+          return server:prompt(session.id, plaintext):next(function()
+            vim.notify(('Sent prompt to %s'):format(session.title or session.id), vim.log.levels.INFO, {
+              title = 'opencode',
+            })
+            navigate_tui(server, session.id)
+            return Promise.resolve(session)
+          end)
+        end)
+        :next(function()
+          context:clear()
+        end)
+        :catch(function(err)
+          context:resume()
+          if err == nil then
+            vim.schedule(reopen)
+            return
+          end
+          vim.notify(err, vim.log.levels.ERROR, { title = 'opencode' })
+        end)
+    end
+
     ---Open an editable prompt while preserving the buffer/selection used by
-    ---OpenCode's context placeholders. Writing the buffer submits it, so `:wq`
-    ---works like it does for a temporary commit-message buffer.
+    ---OpenCode's context placeholders. Writing the buffer opens the session
+    ---picker, so `:wq` works like it does for a temporary commit-message buffer.
     ---@param default string
     local function ask_multiline(default)
       require('opencode.server.discovery')
@@ -110,8 +199,8 @@ return {
               end
               submitted = true
               submitting = false
-              require('opencode.api.prompt').prompt(prompt, context):catch(function(err)
-                vim.notify(err, vim.log.levels.ERROR, { title = 'opencode' })
+              pick_session_and_prompt(server, prompt, context, function()
+                ask_multiline(prompt)
               end)
             end)
           end
