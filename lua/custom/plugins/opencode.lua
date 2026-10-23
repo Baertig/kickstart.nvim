@@ -53,7 +53,7 @@ return {
       end,
     })
 
-    vim.keymap.set({ 'n', 't' }, '<leader>ao', function()
+    vim.keymap.set('n', '<leader>ao', function()
       Snacks.terminal.toggle(opencode_cmd, terminal_opts)
     end, { desc = '[A]I toggle [O]penCode' })
 
