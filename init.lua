@@ -100,6 +100,12 @@ vim.keymap.set('c', '<down>', '<c-n>', { noremap = true })
 -- NOTE: -- i need <Esc> to work in lazy git.
 vim.keymap.set('t', '<c-e>', '<C-\\><C-n>', { desc = 'Exit terminal mode' })
 
+-- Copy current file path to clipboard
+vim.keymap.set('n', '<leader>cp', function()
+  vim.fn.setreg('+', vim.fn.expand '%:p')
+  vim.notify('Copied: ' .. vim.fn.expand '%:p')
+end, { desc = '[C]opy file [P]ath' })
+
 -- Note: built-in gr* LSP keymaps are deleted in custom/plugins/substiute.lua
 
 -- [[ Basic Autocommands ]]
