@@ -681,6 +681,11 @@ require('lazy').setup({
             -- OpenCode prompts need code-buffer words even when its LSP has results.
             fallbacks = {},
           },
+          path = {
+            opts = {
+              show_hidden_files_by_default = true,
+            },
+          },
         },
       },
     },
