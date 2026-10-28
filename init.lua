@@ -262,6 +262,10 @@ require('lazy').setup({
       -- [[ Configure Telescope ]]
       -- See `:help telescope` and `:help telescope.setup()`
       local actions = require 'telescope.actions'
+      local function find_files_command()
+        return { 'rg', '--files', '--hidden', '--glob', '!**/.git/**', '--glob', '!**/node_modules/**', '--glob', '!**/vendor/**' }
+      end
+
       require('telescope').setup {
         -- You can put your default mappings / updates / etc. in here
         --  All the info you're looking for is in `:help telescope.setup()`
@@ -275,8 +279,24 @@ require('lazy').setup({
         },
         pickers = {
           find_files = {
-            find_command = { 'rg', '--files', '--hidden', '--glob', '!**/.git/*' },
+            find_command = find_files_command,
             path_display = { 'filename_first', 'truncate' },
+            attach_mappings = function(prompt_bufnr, map)
+              map({ 'i', 'n' }, '<C-g>', function()
+                local picker = require('telescope.actions.state').get_current_picker(prompt_bufnr)
+                picker.show_gitignored = not picker.show_gitignored
+                local command = find_files_command()
+                if picker.show_gitignored then
+                  table.insert(command, '--no-ignore-vcs')
+                end
+                local finder = require('telescope.finders').new_oneshot_job(command, {
+                  cwd = picker.cwd,
+                  entry_maker = picker.finder.entry_maker,
+                })
+                picker:refresh(finder, { reset_prompt = false })
+              end, { desc = 'Toggle Git-ignored files' })
+              return true
+            end,
           },
           buffers = {
             mappings = {
