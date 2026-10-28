@@ -35,8 +35,8 @@ return {
       bash:toggle()
     end)
 
-    vim.keymap.set('n', '<leader>gs', function()
+    vim.keymap.set('n', '<leader>lg', function()
       lazygit:toggle()
-    end, { desc = '[G]it [S]tatus (lazygit)', nowait = true, silent = true })
+    end, { desc = '[L]azy [G]it', nowait = true, silent = true })
   end,
 }
