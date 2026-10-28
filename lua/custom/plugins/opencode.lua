@@ -43,6 +43,11 @@ return {
       group = vim.api.nvim_create_augroup('opencode-terminal', { clear = true }),
       once = true,
       callback = function()
+        -- External-editor launches opt out via EDITOR/VISUAL.
+        if vim.env.NVIM_NO_OPENCODE == '1' then
+          return
+        end
+
         vim.schedule(function()
           local current_win = vim.api.nvim_get_current_win()
           Snacks.terminal.open(opencode_cmd, terminal_opts)
