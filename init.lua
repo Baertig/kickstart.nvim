@@ -688,9 +688,6 @@ require('lazy').setup({
       fuzzy = { implementation = 'rust' },
       sources = {
         default = { 'lazydev', 'lsp', 'path', 'snippets' },
-        per_filetype = {
-          opencode_ask = { 'lsp', 'buffer' },
-        },
         providers = {
           lazydev = {
             name = 'LazyDev',
@@ -698,7 +695,7 @@ require('lazy').setup({
             score_offset = 100,
           },
           lsp = {
-            -- OpenCode prompts need code-buffer words even when its LSP has results.
+            -- Don't fall back to arbitrary buffer words.
             fallbacks = {},
           },
           path = {

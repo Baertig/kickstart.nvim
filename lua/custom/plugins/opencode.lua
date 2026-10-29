@@ -8,6 +8,61 @@ return {
   dependencies = {
     -- Provides the input prompt and picker UI used by ask() and select().
     { 'folke/snacks.nvim', opts = { input = { enabled = true } } },
+    {
+      'saghen/blink.cmp',
+      opts = function(_, opts)
+        local path_opts = vim.tbl_get(opts, 'sources', 'providers', 'path', 'opts') or {}
+        local get_cwd = path_opts.get_cwd or function(ctx)
+          return vim.fn.expand(('#%d:p:h'):format(ctx.bufnr))
+        end
+        local auto_show = vim.tbl_get(opts, 'completion', 'menu', 'auto_show')
+
+        -- Extend Blink's general setup here so prompt completion stays with
+        -- the OpenCode integration rather than in init.lua.
+        return vim.tbl_deep_extend('force', opts, {
+          completion = {
+            menu = {
+              auto_show = function(ctx, items)
+                -- Avoid distracting popups while composing a prompt. Blink's
+                -- <C-Space> show command still opens the menu explicitly.
+                if not vim.api.nvim_buf_is_valid(ctx.bufnr) or vim.bo[ctx.bufnr].filetype == 'opencode_ask' then
+                  return false
+                end
+                if type(auto_show) == 'function' then
+                  return auto_show(ctx, items)
+                end
+                return auto_show ~= false
+              end,
+            },
+          },
+          sources = {
+            per_filetype = {
+              opencode_ask = { 'lsp', 'path', 'opencode_buffer' },
+            },
+            providers = {
+              path = {
+                opts = {
+                  get_cwd = function(ctx)
+                    -- Prompt buffers have a URI, not a filesystem path.
+                    return vim.b[ctx.bufnr].opencode_cwd or get_cwd(ctx)
+                  end,
+                },
+              },
+              opencode_buffer = {
+                name = 'Current file',
+                module = 'blink.cmp.sources.buffer',
+                opts = {
+                  get_bufnrs = function()
+                    local buf = vim.b.opencode_source_buf
+                    return buf and vim.api.nvim_buf_is_loaded(buf) and { buf } or {}
+                  end,
+                },
+              },
+            },
+          },
+        })
+      end,
+    },
   },
   config = function()
     -- Required so buffers reload when opencode edits files on disk.
@@ -164,6 +219,7 @@ return {
           -- This must be created before opening the float: Context.new captures
           -- the current buffer, cursor, and visual selection for @this.
           local context = require('opencode.context').new(server)
+          local cwd = vim.fn.getcwd()
           local submitted = false
           local submitting = false
           local cancelled = false
@@ -221,6 +277,12 @@ return {
             footer = ' <C-Space> complete · :q cancel ',
             footer_pos = 'right',
             text = vim.split(default or '', '\n', { plain = true }),
+            -- Highlight Markdown without changing the completion filetype.
+            ft = 'markdown',
+            b = {
+              opencode_source_buf = context.buf,
+              opencode_cwd = cwd,
+            },
             bo = {
               buftype = 'acwrite',
               bufhidden = 'wipe',
@@ -261,8 +323,8 @@ return {
                 end,
               })
 
-              -- Reuse opencode.nvim's in-process LSP. blink.cmp is already
-              -- configured for the opencode_ask filetype in init.lua.
+              -- Reuse opencode.nvim's in-process LSP. The Blink dependency above
+              -- configures completion for the opencode_ask filetype.
               vim.lsp.start(require 'opencode.ui.ask.cmp', { bufnr = self.buf })
               highlight(self.buf)
             end,
