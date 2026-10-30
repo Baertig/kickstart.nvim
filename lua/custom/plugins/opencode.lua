@@ -118,6 +118,73 @@ return {
     end, { desc = '[A]I toggle [O]penCode' })
 
     local prompt_ns = vim.api.nvim_create_namespace 'opencode_multiline_prompt'
+    -- These live only for this Neovim instance; no prompts are written to disk.
+    -- Context/selection and whole-buffer prompts have separate drafts per file.
+    local drafts = { ['@this: '] = {}, ['@buffer: '] = {} }
+    local prompt_windows = { ['@this: '] = {}, ['@buffer: '] = {} }
+    local recent_models = {}
+
+    local function model_key(model)
+      return model and (model.providerID .. '/' .. model.id .. (model.variant and '#' .. model.variant or '')) or 'session model'
+    end
+
+    local function remember_model(model)
+      if not model then
+        return
+      end
+      recent_models = vim.tbl_filter(function(item)
+        return model_key(item) ~= model_key(model)
+      end, recent_models)
+      table.insert(recent_models, 1, vim.deepcopy(model))
+      recent_models[4] = nil
+    end
+
+    local function draft_key(buf)
+      local name = vim.api.nvim_buf_get_name(buf)
+      return name ~= '' and not name:match '^%a[%w+.-]*://' and vim.fn.fnamemodify(name, ':p') or 'buffer:' .. buf
+    end
+
+    local function save_draft(draft)
+      if draft.delivered then
+        return
+      end
+      -- An untouched context placeholder isn't an unfinished question.
+      local text = vim.trim(draft.text)
+      drafts[draft.default][draft.key] = text ~= '' and text ~= vim.trim(draft.default) and draft or nil
+    end
+
+    local function prompt_title(draft)
+      local context = draft.context
+      local file = draft.key:match '^buffer:' and ('Untitled #' .. context.buf) or vim.fn.fnamemodify(draft.key, ':~:.')
+      local scope = ' (whole buffer)'
+      if draft.default ~= '@buffer: ' then
+        scope = context.range and (':' .. context.range.from[1] .. '–' .. context.range.to[1]) or (':' .. context.cursor[1])
+      end
+      return ' Ask OpenCode · ' .. file .. scope .. ' · ' .. model_key(draft.model) .. ' '
+    end
+
+    local function clear_context(context)
+      if vim.api.nvim_buf_is_valid(context.buf) then
+        context:clear()
+      end
+    end
+
+    local function resume_context(context)
+      clear_context(context)
+      if not context.range or not vim.api.nvim_win_is_valid(context.win) or vim.api.nvim_win_get_buf(context.win) ~= context.buf then
+        return
+      end
+      -- gv otherwise uses the latest selection, not necessarily this draft's.
+      pcall(vim.api.nvim_win_call, context.win, function()
+        vim.api.nvim_buf_set_mark(context.buf, '<', context.range.from[1], context.range.from[2], {})
+        vim.api.nvim_buf_set_mark(context.buf, '>', context.range.to[1], context.range.to[2], {})
+        context:resume()
+        local mode = ({ char = 'v', line = 'V', block = '\22' })[context.range.kind]
+        if vim.fn.mode() ~= mode then
+          vim.cmd.normal { args = { mode }, bang = true }
+        end
+      end)
+    end
 
     ---Ask this workspace's OpenCode TUI to navigate to a session.
     ---
@@ -138,20 +205,26 @@ return {
         :catch(function() end)
     end
 
-    ---Pick an existing session, or create a new one, then send the rendered prompt.
+    ---Pick a session, apply an explicit model choice, then durably deliver the draft.
     ---@param server opencode.server.Server
-    ---@param prompt string
-    ---@param context opencode.context.Context
-    ---@param reopen fun()
-    local function pick_session_and_prompt(server, prompt, context, reopen)
+    ---@param draft table
+    ---@param reopen fun(server: opencode.server.Server)
+    local function pick_session_and_prompt(server, draft, reopen)
       local Promise = require 'opencode.promise'
       local new_session = { new = true, title = 'New session' }
 
-      server
-        :get_sessions()
-        :next(function(sessions)
+      -- Rediscover on each attempt so a service restart doesn't strand a draft
+      -- on the old connection. This never retries a delivery automatically.
+      require('opencode.server.discovery')
+        .get()
+        :next(function(active_server)
+          server = active_server
+          draft.context.server = server
+          return server:request('/api/session?directory=' .. vim.uri_encode(draft.cwd) .. '&order=desc&parentID=null', 'GET')
+        end)
+        :next(function(response)
           local choices = { new_session }
-          for _, session in ipairs(sessions) do
+          for _, session in ipairs(response and response.data or {}) do
             if not (session.time and session.time.archived) then
               table.insert(choices, session)
             end
@@ -175,7 +248,7 @@ return {
 
           return server
             :request('/api/session', 'POST', {
-              location = { directory = vim.fn.getcwd() },
+              location = { directory = draft.cwd },
             })
             :next(function(response)
               local session = response and response.data
@@ -186,164 +259,406 @@ return {
             end)
         end)
         :next(function(session)
-          local plaintext = context:render(prompt).output:plaintext()
-          return server:prompt(session.id, plaintext):next(function()
-            vim.notify(('Sent prompt to %s'):format(session.title or session.id), vim.log.levels.INFO, {
-              title = 'opencode',
-            })
-            navigate_tui(server, session.id)
-            return Promise.resolve(session)
+          local model = draft.model and server:request('/api/session/' .. session.id .. '/model', 'POST', { model = draft.model }) or Promise.resolve()
+          return model:next(function()
+            local plaintext = draft.context:render(draft.text).output:plaintext()
+            return server:prompt(session.id, plaintext):next(function(response)
+              if not (response and response.data) then
+                return Promise.reject 'OpenCode did not confirm prompt delivery'
+              end
+              -- Only an accepted prompt clears the draft, not closing the editor
+              -- or choosing a model. Later UI errors must not offer a resend.
+              draft.delivered = true
+              draft.sending = false
+              drafts[draft.default][draft.key] = nil
+              remember_model(draft.model or session.model)
+              clear_context(draft.context)
+              vim.notify(('Sent prompt to %s'):format(session.title or session.id), vim.log.levels.INFO, { title = 'opencode' })
+              navigate_tui(server, session.id)
+              return Promise.resolve(session)
+            end)
           end)
         end)
-        :next(function()
-          context:clear()
-        end)
         :catch(function(err)
-          context:resume()
-          if err == nil then
-            vim.schedule(reopen)
+          draft.sending = false
+          if draft.delivered then
+            if err then
+              vim.notify(tostring(err), vim.log.levels.ERROR, { title = 'opencode' })
+            end
             return
           end
-          vim.notify(err, vim.log.levels.ERROR, { title = 'opencode' })
+          save_draft(draft)
+          if err then
+            vim.notify(
+              tostring(err) .. '\nDraft retained. Check the session before retrying if delivery is uncertain.',
+              vim.log.levels.ERROR,
+              { title = 'opencode' }
+            )
+          end
+          vim.schedule(function()
+            reopen(server)
+          end)
         end)
     end
 
-    ---Open an editable prompt while preserving the buffer/selection used by
-    ---OpenCode's context placeholders. Writing the buffer opens the session
-    ---picker, so `:wq` works like it does for a temporary commit-message buffer.
-    ---@param default string
+    ---Open a draft without recapturing its source selection when a picker is cancelled.
+    local function open_draft(server, draft, fresh)
+      local context = draft.context
+      local windows = prompt_windows[draft.default]
+      if not vim.api.nvim_buf_is_valid(context.buf) then
+        save_draft(draft)
+        vim.notify('Source buffer is gone. Draft retained; reopen its file to continue.', vim.log.levels.WARN, { title = 'opencode' })
+        return
+      end
+      context.server = server
+      require('opencode.context').current = context
+      local discarded = false
+      local group = vim.api.nvim_create_augroup('opencode-multiline-prompt', { clear = false })
+      local win
+
+      local function snapshot(buf)
+        if discarded or not buf or not vim.api.nvim_buf_is_valid(buf) then
+          return
+        end
+        draft.text = table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), '\n')
+        if win and win:valid() then
+          draft.cursor = vim.api.nvim_win_get_cursor(win.win)
+        end
+        save_draft(draft)
+      end
+
+      local function highlight(buf)
+        vim.api.nvim_buf_clear_namespace(buf, prompt_ns, 0, -1)
+        local ok, rendered = pcall(context.render, context, draft.text)
+        if not ok then
+          return
+        end
+        for _, mark in ipairs(rendered.input:extmarks()) do
+          vim.api.nvim_buf_set_extmark(buf, prompt_ns, mark.row - 1, mark.col or 0, {
+            end_col = mark.end_col,
+            hl_group = mark.hl_group,
+          })
+        end
+      end
+
+      -- The catalog is project-scoped and fetched only on demand. Encode the
+      -- brackets so curl doesn't interpret the location query as a glob.
+      local models, loading_models
+      local function with_models(callback)
+        if draft.sending or not win:valid() then
+          return
+        end
+        if models then
+          callback(models)
+          return
+        end
+        if loading_models then
+          return
+        end
+        loading_models = true
+        server
+          :request('/api/model?location%5Bdirectory%5D=' .. vim.uri_encode(draft.cwd), 'GET')
+          :next(function(response)
+            loading_models = false
+            if draft.sending or not win:valid() then
+              return
+            end
+            models = {}
+            for _, model in ipairs(response and response.data or {}) do
+              if model.enabled then
+                local function add(variant)
+                  local ref = { providerID = model.providerID, id = model.id, variant = variant }
+                  table.insert(models, { model = ref, label = (model.name or model.id) .. ' · ' .. model_key(ref) })
+                end
+                add()
+                for _, variant in ipairs(model.variants or {}) do
+                  add(variant.id)
+                end
+              end
+            end
+            callback(models)
+          end)
+          :catch(function(err)
+            loading_models = false
+            vim.notify(tostring(err), vim.log.levels.ERROR, { title = 'opencode' })
+          end)
+      end
+
+      local function pick_model()
+        local was_insert = vim.api.nvim_get_mode().mode:sub(1, 1) == 'i'
+        with_models(function(available)
+          local ranks = {}
+          for index, model in ipairs(recent_models) do
+            ranks[model_key(model)] = index
+          end
+          local choices = vim.deepcopy(available)
+          table.sort(choices, function(a, b)
+            local first, second = ranks[model_key(a.model)] or math.huge, ranks[model_key(b.model)] or math.huge
+            return first ~= second and first < second or first == second and a.label < b.label
+          end)
+          table.insert(choices, 1, { label = 'Use session model (no override)' })
+          require('opencode.promise.ui')
+            .select(choices, {
+              prompt = 'Model for this prompt:',
+              format_item = function(choice)
+                return choice.label
+              end,
+            })
+            :next(function(choice)
+              if win:valid() then
+                draft.model = choice.model
+                win:set_title(prompt_title(draft), 'left')
+              end
+            end)
+            :catch(function(err)
+              if err then
+                vim.notify(tostring(err), vim.log.levels.ERROR, { title = 'opencode' })
+              end
+            end)
+            :finally(function()
+              if win:valid() then
+                vim.api.nvim_set_current_win(win.win)
+                if was_insert then
+                  vim.cmd.startinsert()
+                end
+              end
+            end)
+        end)
+      end
+
+      local function cycle_model()
+        if #recent_models == 0 then
+          vim.notify('No recent models yet. Pick a model with <C-g>m and send a prompt first.', vim.log.levels.INFO, { title = 'opencode' })
+          return
+        end
+        with_models(function(available)
+          local enabled, choices = {}, {}
+          for _, choice in ipairs(available) do
+            enabled[model_key(choice.model)] = true
+          end
+          for _, model in ipairs(recent_models) do
+            if enabled[model_key(model)] then
+              table.insert(choices, model)
+            end
+          end
+          if #choices == 0 then
+            vim.notify('Recent models are not available in this workspace.', vim.log.levels.WARN, { title = 'opencode' })
+            return
+          end
+          local index = 0
+          for i, model in ipairs(choices) do
+            if model_key(model) == model_key(draft.model) then
+              index = i
+              break
+            end
+          end
+          -- Cycling doesn't reorder the ring; only successfully used models do.
+          draft.model = vim.deepcopy(choices[index % #choices + 1])
+          win:set_title(prompt_title(draft), 'left')
+        end)
+      end
+
+      local function submit()
+        if draft.sending or not win or not win:valid() then
+          return
+        end
+        snapshot(win.buf)
+        if vim.trim(draft.text) == '' or vim.trim(draft.text) == vim.trim(draft.default) then
+          vim.notify('OpenCode prompt is empty', vim.log.levels.WARN)
+          return
+        end
+        draft.sending = true
+        vim.bo[win.buf].modified = false
+        vim.schedule(function()
+          win:close()
+          pick_session_and_prompt(server, draft, function(active_server)
+            open_draft(active_server, draft, fresh)
+          end)
+        end)
+      end
+
+      win = Snacks.win {
+        title = prompt_title(draft),
+        title_pos = 'left',
+        width = 0.7,
+        max_width = 120, -- Keep prompts readable on wide screens.
+        height = 0.3,
+        border = 'rounded',
+        enter = true,
+        minimal = false,
+        footer = ' <C-s> send · <C-Space> complete · <C-g>m model · <C-g>n cycle · <C-g>r fresh · :q save draft ',
+        footer_pos = 'right',
+        text = vim.split(draft.text, '\n', { plain = true }),
+        -- Highlight Markdown without changing the completion filetype.
+        ft = 'markdown',
+        b = {
+          opencode_source_buf = context.buf,
+          opencode_cwd = draft.cwd,
+          opencode_draft_key = draft.key,
+          opencode_draft_mode = draft.default,
+        },
+        bo = {
+          buftype = 'acwrite',
+          bufhidden = 'wipe',
+          swapfile = false,
+          undofile = false,
+          filetype = 'opencode_ask',
+        },
+        wo = {
+          wrap = true,
+          linebreak = true,
+        },
+        keys = {
+          submit = { '<C-s>', submit, mode = { 'n', 'i' }, desc = 'Submit prompt' },
+          model = { '<C-g>m', pick_model, mode = { 'n', 'i' }, desc = 'Pick prompt model' },
+          cycle = { '<C-g>n', cycle_model, mode = { 'n', 'i' }, desc = 'Cycle recent models' },
+          fresh = {
+            '<C-g>r',
+            function(self)
+              if draft.sending then
+                return
+              end
+              local source = self.meta.opencode_fresh
+              discarded = true
+              drafts[draft.default][draft.key] = nil
+              clear_context(context)
+              self:close()
+              local next_draft = { key = source.key, default = source.default, text = source.default, cwd = source.cwd, context = source.context }
+              vim.schedule(function()
+                open_draft(server, next_draft, next_draft)
+              end)
+            end,
+            mode = { 'n', 'i' },
+            desc = 'Discard draft and start fresh',
+          },
+          cancel = {
+            '<Esc>',
+            function(self)
+              vim.bo[self.buf].modified = false
+              self:close()
+            end,
+            mode = 'n',
+            desc = 'Close and keep draft',
+          },
+        },
+        on_buf = function(self)
+          local buf = self.buf
+          vim.api.nvim_buf_set_name(buf, 'opencode://prompt/' .. buf)
+          vim.api.nvim_create_autocmd('BufWriteCmd', { group = group, buffer = buf, callback = submit })
+          vim.api.nvim_create_autocmd('QuitPre', {
+            group = group,
+            buffer = buf,
+            callback = function()
+              snapshot(buf)
+              vim.bo[buf].modified = false
+            end,
+          })
+          vim.api.nvim_create_autocmd({ 'TextChanged', 'TextChangedI', 'BufLeave', 'BufWipeout' }, {
+            group = group,
+            buffer = buf,
+            callback = function()
+              snapshot(buf)
+              if vim.api.nvim_buf_is_valid(buf) then
+                highlight(buf)
+              end
+            end,
+          })
+          vim.api.nvim_create_autocmd('BufEnter', {
+            group = group,
+            buffer = buf,
+            callback = function()
+              require('opencode.context').current = context
+            end,
+          })
+          -- Reuse opencode.nvim's in-process LSP. The Blink dependency above
+          -- configures completion for the opencode_ask filetype.
+          vim.lsp.start(require 'opencode.ui.ask.cmp', { bufnr = buf })
+          highlight(buf)
+        end,
+        on_close = function(self)
+          snapshot(self.buf)
+          if windows[draft.key] == self then
+            windows[draft.key] = nil
+          end
+          if not draft.sending and not discarded then
+            vim.schedule(function()
+              if not prompt_windows['@this: '][draft.key] and not prompt_windows['@buffer: '][draft.key] then
+                resume_context(context)
+              end
+            end)
+          end
+        end,
+      }
+      win.meta.opencode_draft = draft
+      win.meta.opencode_fresh = fresh or draft
+      windows[draft.key] = win
+
+      vim.schedule(function()
+        if win:valid() then
+          local lines = vim.api.nvim_buf_get_lines(win.buf, 0, -1, false)
+          local cursor = draft.cursor or { #lines, #(lines[#lines] or '') }
+          local row = math.min(cursor[1], #lines)
+          vim.api.nvim_win_set_cursor(win.win, { row, math.min(cursor[2], #(lines[row] or '')) })
+          vim.cmd.startinsert()
+        end
+      end)
+    end
+
+    ---Resume this file's draft for the requested flow, or capture new context.
     local function ask_multiline(default)
+      local buf = vim.b.opencode_source_buf or vim.api.nvim_get_current_buf()
+      local key = vim.b.opencode_draft_key or draft_key(buf)
+      local saved = drafts[default]
+      local existing = prompt_windows[default][key]
+      if existing and existing:valid() then
+        if vim.api.nvim_get_current_buf() == buf then
+          local context = require('opencode.context').new(existing.meta.opencode_draft.context.server)
+          clear_context(context)
+          -- Focus the original draft without retargeting it; the explicit fresh
+          -- action can adopt this newer file/selection context instead.
+          existing.meta.opencode_fresh = { key = key, default = default, text = default, context = context, cwd = vim.fn.getcwd() }
+        end
+        vim.api.nvim_set_current_win(existing.win)
+        vim.cmd.startinsert()
+        return
+      end
+      if saved[key] and saved[key].sending then
+        vim.notify('This prompt is still being delivered.', vim.log.levels.INFO, { title = 'opencode' })
+        return
+      end
+      local source_win = vim.api.nvim_get_current_win()
+      if vim.b.opencode_draft_mode then
+        -- Switching flows from inside the ask editor must capture the real file,
+        -- not the other prompt's text or selection.
+        local current = prompt_windows[vim.b.opencode_draft_mode][key]
+        source_win = current and current.meta.opencode_draft.context.win
+        if not source_win or not vim.api.nvim_win_is_valid(source_win) or vim.api.nvim_win_get_buf(source_win) ~= buf then
+          vim.notify('Source window is unavailable. Reopen the file to start the other prompt.', vim.log.levels.WARN, { title = 'opencode' })
+          return
+        end
+        vim.api.nvim_set_current_win(source_win)
+      end
       require('opencode.server.discovery')
         .get()
         :next(function(server)
-          -- This must be created before opening the float: Context.new captures
-          -- the current buffer, cursor, and visual selection for @this.
+          if not vim.api.nvim_win_is_valid(source_win) or vim.api.nvim_get_current_win() ~= source_win or vim.api.nvim_win_get_buf(source_win) ~= buf then
+            vim.notify('Source window changed while discovering OpenCode. Please ask again.', vim.log.levels.WARN, { title = 'opencode' })
+            return
+          end
           local context = require('opencode.context').new(server)
-          local cwd = vim.fn.getcwd()
-          local submitted = false
-          local submitting = false
-          local cancelled = false
-          local group = vim.api.nvim_create_augroup('opencode-multiline-prompt', { clear = false })
-
-          local function highlight(buf)
-            if not vim.api.nvim_buf_is_valid(buf) then
-              return
-            end
-
-            vim.api.nvim_buf_clear_namespace(buf, prompt_ns, 0, -1)
-            local text = table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), '\n')
-            for _, mark in ipairs(context:render(text).input:extmarks()) do
-              vim.api.nvim_buf_set_extmark(buf, prompt_ns, mark.row - 1, mark.col or 0, {
-                end_col = mark.end_col,
-                hl_group = mark.hl_group,
-              })
-            end
+          local fresh = { key = key, default = default, text = default, context = context, cwd = vim.fn.getcwd() }
+          local draft = saved[key] or fresh
+          if draft ~= fresh then
+            clear_context(context)
+            -- Bind a reopened file to its current buffer/window, but retain the
+            -- original cursor and selection instead of silently retargeting it.
+            draft.context.buf = buf
+            draft.context.win = source_win
           end
-
-          local win
-          local function submit()
-            if submitted or submitting or not win or not vim.api.nvim_buf_is_valid(win.buf) then
-              return
-            end
-
-            local prompt = table.concat(vim.api.nvim_buf_get_lines(win.buf, 0, -1, false), '\n')
-            if vim.trim(prompt) == '' then
-              vim.notify('OpenCode prompt is empty', vim.log.levels.WARN)
-              return
-            end
-
-            submitting = true
-            vim.bo[win.buf].modified = false
-            vim.schedule(function()
-              if win and win:valid() then
-                win:close()
-              end
-              submitted = true
-              submitting = false
-              pick_session_and_prompt(server, prompt, context, function()
-                ask_multiline(prompt)
-              end)
-            end)
-          end
-
-          win = Snacks.win {
-            title = ' Ask OpenCode — :wq to submit ',
-            title_pos = 'left',
-            width = 0.7,
-            height = 0.3,
-            border = 'rounded',
-            enter = true,
-            minimal = false,
-            footer = ' <C-Space> complete · :q cancel ',
-            footer_pos = 'right',
-            text = vim.split(default or '', '\n', { plain = true }),
-            -- Highlight Markdown without changing the completion filetype.
-            ft = 'markdown',
-            b = {
-              opencode_source_buf = context.buf,
-              opencode_cwd = cwd,
-            },
-            bo = {
-              buftype = 'acwrite',
-              bufhidden = 'wipe',
-              swapfile = false,
-              filetype = 'opencode_ask',
-            },
-            wo = {
-              wrap = true,
-              linebreak = true,
-            },
-            keys = {
-              submit = { '<C-s>', submit, mode = { 'n', 'i' }, desc = 'Submit prompt' },
-              cancel = {
-                '<Esc>',
-                function(self)
-                  cancelled = true
-                  vim.bo[self.buf].modified = false
-                  context:resume()
-                  self:close()
-                end,
-                mode = 'n',
-                desc = 'Cancel prompt',
-              },
-            },
-            on_buf = function(self)
-              vim.api.nvim_buf_set_name(self.buf, 'opencode://prompt/' .. self.buf)
-
-              vim.api.nvim_create_autocmd('BufWriteCmd', {
-                group = group,
-                buffer = self.buf,
-                callback = submit,
-              })
-              vim.api.nvim_create_autocmd({ 'TextChanged', 'TextChangedI' }, {
-                group = group,
-                buffer = self.buf,
-                callback = function()
-                  highlight(self.buf)
-                end,
-              })
-
-              -- Reuse opencode.nvim's in-process LSP. The Blink dependency above
-              -- configures completion for the opencode_ask filetype.
-              vim.lsp.start(require 'opencode.ui.ask.cmp', { bufnr = self.buf })
-              highlight(self.buf)
-            end,
-            on_close = function()
-              if not submitted and not submitting and not cancelled then
-                context:resume()
-              end
-            end,
-          }
-
-          vim.schedule(function()
-            if win:valid() then
-              vim.api.nvim_win_set_cursor(win.win, { vim.api.nvim_buf_line_count(win.buf), #(vim.api.nvim_buf_get_lines(win.buf, -2, -1, false)[1] or '') })
-              vim.cmd.startinsert()
-            end
-          end)
+          open_draft(server, draft, fresh)
         end)
         :catch(function(err)
-          vim.notify(err, vim.log.levels.ERROR, { title = 'opencode' })
+          vim.notify(tostring(err), vim.log.levels.ERROR, { title = 'opencode' })
         end)
     end
 
