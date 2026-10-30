@@ -1,6 +1,3 @@
--- NOTE: Plugins to try out next
--- https://github.com/ThePrimeagen/harpoon/tree/harpoon2 --> quick access to often used files
---
 --<space> as the leader key
 -- See `:help mapleader`
 --  NOTE: Must happen before plugins are loaded (otherwise wrong leader will be used)
@@ -281,9 +278,13 @@ require('lazy').setup({
           find_files = {
             find_command = find_files_command,
             path_display = { 'filename_first', 'truncate' },
+            prompt_title = false,
+            results_title = 'Find Files',
             attach_mappings = function(prompt_bufnr, map)
+              local state = require 'telescope.actions.state'
+              local picker = state.get_current_picker(prompt_bufnr)
+
               map({ 'i', 'n' }, '<C-g>', function()
-                local picker = require('telescope.actions.state').get_current_picker(prompt_bufnr)
                 picker.show_gitignored = not picker.show_gitignored
                 local command = find_files_command()
                 if picker.show_gitignored then
@@ -295,6 +296,19 @@ require('lazy').setup({
                 })
                 picker:refresh(finder, { reset_prompt = false })
               end, { desc = 'Toggle Git-ignored files' })
+
+              map({ 'i', 'n' }, '<C-y>', function()
+                local entry = state.get_selected_entry()
+                if not entry then
+                  return
+                end
+
+                local path = entry.value
+                vim.fn.setreg('+', path)
+                vim.notify(('Copied relative path: %s'):format(path), vim.log.levels.INFO)
+              end, { desc = 'Copy relative file path' })
+
+              picker.layout.prompt.border:change_title(' <C-g> toggle ignored · <C-y> copy path ', 'S')
               return true
             end,
           },
