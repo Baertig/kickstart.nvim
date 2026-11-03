@@ -6,7 +6,7 @@
 return {
   'NickvanDyke/opencode.nvim',
   dependencies = {
-    -- Provides the input prompt and picker UI used by ask() and select().
+    -- Provides the multiline window and the input UI used by ask().
     { 'folke/snacks.nvim', opts = { input = { enabled = true } } },
     {
       'saghen/blink.cmp',
@@ -484,6 +484,9 @@ return {
         max_width = 120, -- Keep prompts readable on wide screens.
         height = 0.3,
         border = 'rounded',
+        -- Telescope's ui-select windows use 50. Equal stacking levels can
+        -- hide its candidates and borders behind this prompt in Neovide.
+        zindex = 40,
         enter = true,
         minimal = false,
         footer = ' <C-s> send · <C-Space> complete · <C-g>m model · <C-g>n cycle · <C-g>r fresh · :q save draft ',
