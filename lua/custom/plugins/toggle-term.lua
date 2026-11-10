@@ -7,7 +7,13 @@ return {
     }
 
     local Terminal = require('toggleterm.terminal').Terminal
-    local lazygit = Terminal:new { cmd = 'lazygit', hidden = true, direction = 'float', display_name = 'git' }
+    local lazygit = Terminal:new {
+      -- Match the shell's lg alias; macOS uses a different default config directory.
+      cmd = 'lazygit --use-config-dir ' .. vim.fn.shellescape(vim.fn.expand '~/.config/lazygit'),
+      hidden = true,
+      direction = 'float',
+      display_name = 'git',
+    }
 
     local bash = Terminal:new {
       display_name = 'bash',
