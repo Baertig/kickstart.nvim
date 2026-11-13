@@ -641,7 +641,7 @@ require('lazy').setup({
     config = function()
       require 'leap'
 
-      vim.keymap.set('n', 'S', '<Plug>(leap)')
+      vim.keymap.set({ 'n', 'x' }, 'S', '<Plug>(leap)')
     end,
   },
 
