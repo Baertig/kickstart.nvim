@@ -4,8 +4,8 @@
 vim.g.mapleader = ' '
 vim.g.maplocalleader = ' '
 
--- Treat macOS Option as Meta in Neovide for <M-...> mappings.
-vim.g.neovide_input_macos_option_key_is_meta = 'both'
+-- Treat left macOS Option as Meta in Neovide; keep right Option for symbols.
+vim.g.neovide_input_macos_option_key_is_meta = 'only_left'
 
 -- Set to true if you have a Nerd Font installed and selected in the terminal
 vim.g.have_nerd_font = true
