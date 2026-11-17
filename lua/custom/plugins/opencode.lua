@@ -7,7 +7,7 @@ return {
   'NickvanDyke/opencode.nvim',
   dependencies = {
     -- Provides the multiline window and the input UI used by ask().
-    { 'folke/snacks.nvim', opts = { input = { enabled = true } } },
+    'folke/snacks.nvim',
     {
       'saghen/blink.cmp',
       opts = function(_, opts)

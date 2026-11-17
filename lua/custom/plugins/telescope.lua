@@ -4,6 +4,7 @@ return {
   branch = 'master',
   dependencies = {
     'nvim-lua/plenary.nvim',
+    'folke/snacks.nvim',
     {
       'nvim-telescope/telescope-fzf-native.nvim',
       build = 'make',
@@ -72,6 +73,59 @@ return {
       prioritize_filename(picker.sorter)
       map({ 'i', 'n' }, '<C-y>', copy_relative_path, { desc = 'Copy relative file path' })
       return picker
+    end
+
+    local function search_notifications(opts)
+      opts = opts or {}
+      local conf = require('telescope.config').values
+      require('telescope.pickers')
+        .new(opts, {
+          prompt_title = 'Search Notifications',
+          finder = require('telescope.finders').new_table {
+            results = Snacks.notifier.get_history { reverse = true },
+            entry_maker = function(notif)
+              -- Keep multiline messages searchable while displaying a single row.
+              local text = ('%s [%s] %s %s'):format(os.date('%H:%M:%S', notif.added), notif.level:upper(), notif.title or '', notif.msg):gsub('%s+', ' ')
+              return { value = notif, display = text, ordinal = text }
+            end,
+          },
+          sorter = conf.generic_sorter(opts),
+          previewer = require('telescope.previewers').new_buffer_previewer {
+            title = 'Notification Details',
+            define_preview = function(self, entry)
+              local notif = entry.value
+              local lines = {
+                ('[%s] %s'):format(notif.level:upper(), notif.title or ''),
+                os.date('%Y-%m-%d %H:%M:%S', notif.added),
+                '',
+              }
+              vim.list_extend(lines, vim.split(notif.msg, '\n', { plain = true }))
+              vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, lines)
+              vim.wo[self.state.winid].wrap = true
+            end,
+          },
+          attach_mappings = function(prompt_bufnr)
+            -- These entries are notifications, not files, including for split/tab actions.
+            require('telescope.actions.set').select:replace(function()
+              local entry = state.get_selected_entry()
+              if not entry then
+                return
+              end
+              actions.close(prompt_bufnr)
+              -- show_history() toggles an existing history window; replace it instead.
+              if vim.bo.filetype == 'snacks_notif_history' then
+                vim.cmd.close()
+              end
+              Snacks.notifier.show_history {
+                filter = function(notif)
+                  return notif.id == entry.value.id
+                end,
+              }
+            end)
+            return true
+          end,
+        })
+        :find()
     end
 
     telescope.setup {
@@ -170,6 +224,8 @@ return {
     vim.keymap.set('n', '<leader>sn', function()
       builtin.find_files { cwd = vim.fn.stdpath 'config' }
     end, { desc = '[S]earch [N]eovim files' })
+
+    vim.keymap.set('n', '<leader>sN', search_notifications, { desc = '[S]earch [N]otifications' })
 
     vim.keymap.set('i', '<C-.>', '<Esc>:Telescope emoji<CR>', { desc = 'get them emojies' })
   end,
